@@ -1,0 +1,26 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Proyecto.Models
+{
+    public class Emprendimiento
+    {
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(120)]
+        public string Nombre { get; set; } = string.Empty;
+
+        [StringLength(1000)]
+        public string? Descripcion { get; set; }
+
+        public bool Activo { get; set; } = true;
+
+        public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+
+        [Required]
+        public int UsuarioId { get; set; }
+        public Usuario? Usuario { get; set; }
+
+        public ICollection<Producto> Productos { get; set; } = new List<Producto>();
+    }
+}

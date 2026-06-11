@@ -1,0 +1,33 @@
+## Visual Studio Visual Studio
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.sln.doccache
+*.suo
+
+## .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Publicación
+publish/
+*.azurepubxml
+
+## Bases de Datos y Secretos
+appsettings.json
+appsettings.Development.json
+*.db
+*.db-shm
+*.db-wal
+seed_data.sql
+*.log
+
+## Otros
+.DS_Store
+.idea/
+.vscode/
+*.swp
+node_modules/

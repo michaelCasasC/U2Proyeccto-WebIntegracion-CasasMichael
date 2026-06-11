@@ -1,0 +1,39 @@
+﻿@{
+    ViewData["Title"] = "Inicio";
+}
+
+<div class="py-5 text-center bg-light rounded-3 shadow-sm">
+    <h1 class="display-5 fw-bold">EmprendeMarket</h1>
+    <p class="lead mb-4">Un marketplace para clientes y emprendedores. Explora productos, administra emprendimientos y gestiona pedidos en una plataforma lista para crecer.</p>
+    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+        <a class="btn btn-primary btn-lg px-4" asp-controller="Productos" asp-action="Index">Explorar productos</a>
+        <a class="btn btn-outline-primary btn-lg px-4" asp-controller="Emprendimientos" asp-action="Index">Ver emprendimientos</a>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Para clientes</h5>
+                <p class="card-text">Busca productos, filtra por categoría y realiza pedidos con un flujo claro y sencillo.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Para emprendedores</h5>
+                <p class="card-text">Registra tu emprendimiento, agrega productos y mantén tu catálogo actualizado.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">Administración</h5>
+                <p class="card-text">Gestiona usuarios, pedidos y datos del marketplace desde una interfaz limpia y profesional.</p>
+            </div>
+        </div>
+    </div>
+</div>
