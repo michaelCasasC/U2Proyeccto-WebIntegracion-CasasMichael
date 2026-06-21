@@ -25,8 +25,19 @@ namespace Proyecto.Controllers
         // GET: Emprendimientos
         public async Task<IActionResult> Index()
         {
-            var appDbContext = _context.Emprendimientos.Include(e => e.Usuario);
-            return View(await appDbContext.ToListAsync());
+            var emprendimientos = _context.Emprendimientos.Include(e => e.Usuario).AsQueryable();
+
+            if (_userSession.IsEntrepreneur)
+            {
+                var currentUserId = _userSession.GetCurrentUserId();
+                emprendimientos = emprendimientos.Where(e => e.UsuarioId == currentUserId);
+            }
+            else if (!_userSession.IsAdmin)
+            {
+                emprendimientos = emprendimientos.Where(e => e.Activo);
+            }
+
+            return View(await emprendimientos.ToListAsync());
         }
 
         // GET: Emprendimientos/Details/5
@@ -40,7 +51,7 @@ namespace Proyecto.Controllers
             var emprendimiento = await _context.Emprendimientos
                 .Include(e => e.Usuario)
                 .FirstOrDefaultAsync(m => m.Id == id);
-            if (emprendimiento == null)
+            if (emprendimiento == null || !CanView(emprendimiento))
             {
                 return NotFound();
             }
@@ -54,6 +65,11 @@ namespace Proyecto.Controllers
             if (!_userSession.IsLoggedIn)
             {
                 return RedirectToAction("Login", "Account", new { returnUrl = Url.Action("Create", "Emprendimientos") });
+            }
+
+            if (!_userSession.IsAdmin && !_userSession.IsEntrepreneur)
+            {
+                return StatusCode(403);
             }
 
             return View();
@@ -71,6 +87,11 @@ namespace Proyecto.Controllers
                 return RedirectToAction("Login", "Account", new { returnUrl = Url.Action("Create", "Emprendimientos") });
             }
 
+            if (!_userSession.IsAdmin && !_userSession.IsEntrepreneur)
+            {
+                return StatusCode(403);
+            }
+
             var currentUserId = _userSession.GetCurrentUserId();
             if (!currentUserId.HasValue)
             {
@@ -79,7 +100,9 @@ namespace Proyecto.Controllers
 
             if (ModelState.IsValid)
             {
-                emprendimiento.UsuarioId = currentUserId.Value;
+                emprendimiento.UsuarioId = _userSession.IsAdmin && emprendimiento.UsuarioId > 0
+                    ? emprendimiento.UsuarioId
+                    : currentUserId.Value;
                 emprendimiento.FechaCreacion = DateTime.UtcNow;
                 emprendimiento.Activo = true;
 
@@ -100,7 +123,7 @@ namespace Proyecto.Controllers
             }
 
             var emprendimiento = await _context.Emprendimientos.FindAsync(id);
-            if (emprendimiento == null)
+            if (emprendimiento == null || !CanManage(emprendimiento))
             {
                 return NotFound();
             }
@@ -120,11 +143,25 @@ namespace Proyecto.Controllers
                 return NotFound();
             }
 
+            var existing = await _context.Emprendimientos.FindAsync(id);
+            if (existing == null || !CanManage(existing))
+            {
+                return NotFound();
+            }
+
             if (ModelState.IsValid)
             {
                 try
                 {
-                    _context.Update(emprendimiento);
+                    existing.Nombre = emprendimiento.Nombre;
+                    existing.Descripcion = emprendimiento.Descripcion;
+                    existing.Activo = emprendimiento.Activo;
+                    existing.FechaCreacion = emprendimiento.FechaCreacion;
+                    if (_userSession.IsAdmin)
+                    {
+                        existing.UsuarioId = emprendimiento.UsuarioId;
+                    }
+
                     await _context.SaveChangesAsync();
                 }
                 catch (DbUpdateConcurrencyException)
@@ -155,7 +192,7 @@ namespace Proyecto.Controllers
             var emprendimiento = await _context.Emprendimientos
                 .Include(e => e.Usuario)
                 .FirstOrDefaultAsync(m => m.Id == id);
-            if (emprendimiento == null)
+            if (emprendimiento == null || !CanManage(emprendimiento))
             {
                 return NotFound();
             }
@@ -169,9 +206,16 @@ namespace Proyecto.Controllers
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             var emprendimiento = await _context.Emprendimientos.FindAsync(id);
-            if (emprendimiento != null)
+            if (emprendimiento != null && CanManage(emprendimiento))
             {
-                _context.Emprendimientos.Remove(emprendimiento);
+                emprendimiento.Activo = false;
+                var productos = await _context.Productos
+                    .Where(p => p.EmprendimientoId == emprendimiento.Id)
+                    .ToListAsync();
+                foreach (var producto in productos)
+                {
+                    producto.Activo = false;
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -181,6 +225,19 @@ namespace Proyecto.Controllers
         private bool EmprendimientoExists(int id)
         {
             return _context.Emprendimientos.Any(e => e.Id == id);
+        }
+
+        private bool CanView(Emprendimiento emprendimiento)
+        {
+            if (_userSession.IsAdmin) return true;
+            if (_userSession.IsEntrepreneur) return emprendimiento.UsuarioId == _userSession.GetCurrentUserId();
+            return emprendimiento.Activo;
+        }
+
+        private bool CanManage(Emprendimiento emprendimiento)
+        {
+            if (_userSession.IsAdmin) return true;
+            return _userSession.IsEntrepreneur && emprendimiento.UsuarioId == _userSession.GetCurrentUserId();
         }
     }
 }

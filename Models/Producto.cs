@@ -21,6 +21,9 @@ namespace Proyecto.Models
         [Range(0, int.MaxValue)]
         public int Stock { get; set; }
 
+        [StringLength(2000)]
+        public string? ImagenUrl { get; set; }
+
         public bool Activo { get; set; } = true;
 
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

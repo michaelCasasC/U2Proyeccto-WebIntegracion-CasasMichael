@@ -8,6 +8,9 @@ namespace Proyecto.Services
         void SetCurrentUserId(int userId);
         void Clear();
         bool IsLoggedIn { get; }
+        bool IsAdmin { get; }
+        bool IsEntrepreneur { get; }
+        bool CanShop { get; }
         Usuario? GetCurrentUser();
     }
 }

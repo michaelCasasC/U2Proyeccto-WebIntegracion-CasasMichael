@@ -7,27 +7,36 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Proyecto.Data;
 using Proyecto.Models;
+using Proyecto.Services;
 
 namespace Proyecto.Controllers
 {
     public class UsuariosController : Controller
     {
         private readonly AppDbContext _context;
+        private readonly IUserSessionService _userSession;
 
-        public UsuariosController(AppDbContext context)
+        public UsuariosController(AppDbContext context, IUserSessionService userSession)
         {
             _context = context;
+            _userSession = userSession;
         }
 
         // GET: Usuarios
         public async Task<IActionResult> Index()
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             return View(await _context.Usuarios.ToListAsync());
         }
 
         // GET: Usuarios/Details/5
         public async Task<IActionResult> Details(int? id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -46,6 +55,9 @@ namespace Proyecto.Controllers
         // GET: Usuarios/Create
         public IActionResult Create()
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             return View();
         }
 
@@ -54,15 +66,13 @@ namespace Proyecto.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,Nombre,Email,Telefono,EsCliente,EsEmprendedor,Activo,FechaCreacion")] Usuario usuario)
+        public async Task<IActionResult> Create([Bind("Id,Nombre,Email,Telefono,EsCliente,EsEmprendedor,EsAdministrador,Activo,FechaCreacion")] Usuario usuario)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (ModelState.IsValid)
             {
-                if (string.IsNullOrEmpty(usuario.PasswordHash))
-                {
-                    // Set a default password if created through CRUD (not recommended for production but fixes the crash)
-                    usuario.PasswordHash = "AQAAAAIAAYagAAAAEJrO6/r2X7..."; // A dummy hash or handle properly
-                }
                 _context.Add(usuario);
                 await _context.SaveChangesAsync();
                 return RedirectToAction(nameof(Index));
@@ -73,6 +83,9 @@ namespace Proyecto.Controllers
         // GET: Usuarios/Edit/5
         public async Task<IActionResult> Edit(int? id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -91,8 +104,11 @@ namespace Proyecto.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,Nombre,Email,Telefono,EsCliente,EsEmprendedor,Activo,FechaCreacion")] Usuario usuario)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,Nombre,Email,Telefono,EsCliente,EsEmprendedor,EsAdministrador,Activo,FechaCreacion")] Usuario usuario)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id != usuario.Id)
             {
                 return NotFound();
@@ -102,7 +118,21 @@ namespace Proyecto.Controllers
             {
                 try
                 {
-                    _context.Update(usuario);
+                    var usuarioExistente = await _context.Usuarios.FindAsync(id);
+                    if (usuarioExistente == null)
+                    {
+                        return NotFound();
+                    }
+
+                    usuarioExistente.Nombre = usuario.Nombre;
+                    usuarioExistente.Email = usuario.Email;
+                    usuarioExistente.Telefono = usuario.Telefono;
+                    usuarioExistente.EsCliente = usuario.EsCliente;
+                    usuarioExistente.EsEmprendedor = usuario.EsEmprendedor;
+                    usuarioExistente.EsAdministrador = usuario.EsAdministrador;
+                    usuarioExistente.Activo = usuario.Activo;
+                    usuarioExistente.FechaCreacion = usuario.FechaCreacion;
+
                     await _context.SaveChangesAsync();
                 }
                 catch (DbUpdateConcurrencyException)
@@ -124,6 +154,9 @@ namespace Proyecto.Controllers
         // GET: Usuarios/Delete/5
         public async Task<IActionResult> Delete(int? id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -144,10 +177,13 @@ namespace Proyecto.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             var usuario = await _context.Usuarios.FindAsync(id);
             if (usuario != null)
             {
-                _context.Usuarios.Remove(usuario);
+                usuario.Activo = false;
             }
 
             await _context.SaveChangesAsync();
@@ -157,6 +193,21 @@ namespace Proyecto.Controllers
         private bool UsuarioExists(int id)
         {
             return _context.Usuarios.Any(e => e.Id == id);
+        }
+
+        private IActionResult? EnsureAdmin()
+        {
+            if (!_userSession.IsLoggedIn)
+            {
+                return RedirectToAction("Login", "Account", new { returnUrl = $"{Request.Path}{Request.QueryString}" });
+            }
+
+            if (!_userSession.IsAdmin)
+            {
+                return StatusCode(403);
+            }
+
+            return null;
         }
     }
 }

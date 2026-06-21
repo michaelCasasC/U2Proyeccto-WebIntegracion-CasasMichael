@@ -35,6 +35,33 @@ namespace Proyecto.Services
 
         public bool IsLoggedIn => GetCurrentUserId().HasValue;
 
+        public bool IsAdmin
+        {
+            get
+            {
+                var currentUser = GetCurrentUser();
+                return currentUser?.Activo == true && currentUser.EsAdministrador;
+            }
+        }
+
+        public bool IsEntrepreneur
+        {
+            get
+            {
+                var currentUser = GetCurrentUser();
+                return currentUser?.Activo == true && currentUser.EsEmprendedor && !currentUser.EsAdministrador;
+            }
+        }
+
+        public bool CanShop
+        {
+            get
+            {
+                var currentUser = GetCurrentUser();
+                return currentUser?.Activo == true && currentUser.EsCliente;
+            }
+        }
+
         public Usuario? GetCurrentUser()
         {
             var userId = GetCurrentUserId();

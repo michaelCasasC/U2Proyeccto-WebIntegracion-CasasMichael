@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Proyecto.Models;
 
 namespace Proyecto.Data
@@ -57,32 +58,38 @@ namespace Proyecto.Data
                 .HasForeignKey(d => d.ProductoId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<Categoria>()
-                .HasIndex(c => c.Nombre)
-                .IsUnique(false);
-
             modelBuilder.Entity<Producto>()
-                .HasIndex(p => p.Nombre)
-                .IsUnique(false);
+                .HasIndex(p => p.Nombre);
+
+            modelBuilder.Entity<Categoria>()
+                .HasIndex(c => c.Nombre);
         }
 
+        // =========================
+        // SEED DATA + GENERADOR MASIVO
+        // =========================
         public static async Task SeedData(AppDbContext context)
         {
-            if (await context.Usuarios.AnyAsync()) return;
+            // 🔥 CAMBIO IMPORTANTE: ahora se controla por PEDIDOS
+            if (await context.Pedidos.AnyAsync())
+                return;
 
-            var passwordHasher = new Microsoft.AspNetCore.Identity.PasswordHasher<Usuario>();
+            var hasher = new PasswordHasher<Usuario>();
 
-            // 1. Usuarios
+            // =====================
+            // USUARIOS
+            // =====================
             var admin = new Usuario
             {
                 Nombre = "Admin",
                 Email = "admin@emprendemarket.com",
                 EsCliente = true,
                 EsEmprendedor = true,
+                EsAdministrador = true,
                 Activo = true,
                 FechaCreacion = DateTime.UtcNow
             };
-            admin.PasswordHash = passwordHasher.HashPassword(admin, "Admin123!");
+            admin.PasswordHash = hasher.HashPassword(admin, "Admin123!");
 
             var juan = new Usuario
             {
@@ -93,7 +100,7 @@ namespace Proyecto.Data
                 Activo = true,
                 FechaCreacion = DateTime.UtcNow
             };
-            juan.PasswordHash = passwordHasher.HashPassword(juan, "Juan123!");
+            juan.PasswordHash = hasher.HashPassword(juan, "Juan123!");
 
             var maria = new Usuario
             {
@@ -104,108 +111,152 @@ namespace Proyecto.Data
                 Activo = true,
                 FechaCreacion = DateTime.UtcNow
             };
-            maria.PasswordHash = passwordHasher.HashPassword(maria, "Maria123!");
+            maria.PasswordHash = hasher.HashPassword(maria, "Maria123!");
 
             await context.Usuarios.AddRangeAsync(admin, juan, maria);
             await context.SaveChangesAsync();
 
-            // 2. Categorías
-            var catArtesania = new Categoria { Nombre = "Artesanías", Descripcion = "Productos hechos a mano", Activo = true };
-            var catComida = new Categoria { Nombre = "Comida", Descripcion = "Alimentos y postres caseros", Activo = true };
-            var catRopa = new Categoria { Nombre = "Ropa", Descripcion = "Prendas de vestir y accesorios", Activo = true };
+            // =====================
+            // CATEGORÍAS
+            // =====================
+            var cat1 = new Categoria { Nombre = "Artesanías", Activo = true };
+            var cat2 = new Categoria { Nombre = "Comida", Activo = true };
+            var cat3 = new Categoria { Nombre = "Ropa", Activo = true };
 
-            await context.Categorias.AddRangeAsync(catArtesania, catComida, catRopa);
+            await context.Categorias.AddRangeAsync(cat1, cat2, cat3);
             await context.SaveChangesAsync();
 
-            // 3. Emprendimientos
-            var empMaria = new Emprendimiento
+            // =====================
+            // EMPRENDIMIENTOS
+            // =====================
+            var emp1 = new Emprendimiento
             {
                 Nombre = "Tejidos Maria",
-                Descripcion = "Ropa tejida a mano con lana de alta calidad",
                 UsuarioId = maria.Id,
                 Activo = true
             };
 
-            var empAdmin = new Emprendimiento
+            var emp2 = new Emprendimiento
             {
                 Nombre = "Dulces Tentaciones",
-                Descripcion = "Los mejores postres de la ciudad",
                 UsuarioId = admin.Id,
                 Activo = true
             };
 
-            await context.Emprendimientos.AddRangeAsync(empMaria, empAdmin);
+            await context.Emprendimientos.AddRangeAsync(emp1, emp2);
             await context.SaveChangesAsync();
 
-            // 4. Productos
-            var prodSaco = new Producto
+            // =====================
+            // PRODUCTOS
+            // =====================
+            var p1 = new Producto
             {
-                Nombre = "Saco de Lana",
-                Descripcion = "Saco tejido a mano color azul",
+                Nombre = "Saco Lana",
                 Precio = 25.50m,
                 Stock = 10,
-                CategoriaId = catRopa.Id,
-                EmprendimientoId = empMaria.Id,
+                CategoriaId = cat3.Id,
+                EmprendimientoId = emp1.Id,
                 Activo = true
             };
 
-            var prodBufanda = new Producto
+            var p2 = new Producto
             {
-                Nombre = "Bufanda Infinita",
-                Descripcion = "Bufanda suave color gris",
+                Nombre = "Bufanda",
                 Precio = 12.00m,
                 Stock = 20,
-                CategoriaId = catRopa.Id,
-                EmprendimientoId = empMaria.Id,
+                CategoriaId = cat3.Id,
+                EmprendimientoId = emp1.Id,
                 Activo = true
             };
 
-            var prodTorta = new Producto
+            var p3 = new Producto
             {
-                Nombre = "Torta de Chocolate",
-                Descripcion = "Torta húmeda de chocolate para 10 personas",
+                Nombre = "Torta Chocolate",
                 Precio = 18.00m,
                 Stock = 5,
-                CategoriaId = catComida.Id,
-                EmprendimientoId = empAdmin.Id,
+                CategoriaId = cat2.Id,
+                EmprendimientoId = emp2.Id,
                 Activo = true
             };
 
-            await context.Productos.AddRangeAsync(prodSaco, prodBufanda, prodTorta);
+            await context.Productos.AddRangeAsync(p1, p2, p3);
             await context.SaveChangesAsync();
 
-            // 5. Pedidos y Detalles
-            var pedido1 = new Pedido
+            // =====================
+            // 🔥 GENERAR 500.000 PEDIDOS
+            // =====================
+
+            var usuarioIds = await context.Usuarios
+                .Select(u => u.Id)
+                .ToListAsync();
+
+            var productos = await context.Productos
+                .Select(p => new { p.Id, p.Precio })
+                .ToListAsync();
+
+            var random = new Random();
+
+            int totalPedidos = 500_000;
+            int batchSize = 5000;
+
+            var batch = new List<Pedido>();
+
+            context.ChangeTracker.AutoDetectChangesEnabled = false;
+
+            for (int i = 0; i < totalPedidos; i++)
             {
-                UsuarioId = juan.Id,
-                FechaPedido = DateTime.UtcNow,
-                Total = 37.50m,
-                Activo = true
-            };
+                var userId = usuarioIds[random.Next(usuarioIds.Count)];
+                var fecha = DateTime.UtcNow.AddDays(-random.Next(1, 365));
 
-            await context.Pedidos.AddAsync(pedido1);
-            await context.SaveChangesAsync();
+                var pedido = new Pedido
+                {
+                    UsuarioId = userId,
+                    FechaPedido = fecha,
+                    FechaCreacion = fecha,
+                    Activo = true,
+                    Detalles = new List<DetallePedido>()
+                };
 
-            var detalle1 = new DetallePedido
+                int items = random.Next(1, 4);
+                decimal total = 0;
+
+                for (int j = 0; j < items; j++)
+                {
+                    var prod = productos[random.Next(productos.Count)];
+                    int cantidad = random.Next(1, 3);
+
+                    pedido.Detalles.Add(new DetallePedido
+                    {
+                        ProductoId = prod.Id,
+                        Cantidad = cantidad,
+                        PrecioUnitario = prod.Precio,
+                        FechaCreacion = fecha,
+                        Activo = true
+                    });
+
+                    total += cantidad * prod.Precio;
+                }
+
+                pedido.Total = total;
+                batch.Add(pedido);
+
+                if (batch.Count >= batchSize)
+                {
+                    context.Pedidos.AddRange(batch);
+                    await context.SaveChangesAsync();
+                    batch.Clear();
+
+                    Console.WriteLine($"Insertados: {i + 1}");
+                }
+            }
+
+            if (batch.Any())
             {
-                PedidoId = pedido1.Id,
-                ProductoId = prodSaco.Id,
-                Cantidad = 1,
-                PrecioUnitario = 25.50m,
-                Activo = true
-            };
+                context.Pedidos.AddRange(batch);
+                await context.SaveChangesAsync();
+            }
 
-            var detalle2 = new DetallePedido
-            {
-                PedidoId = pedido1.Id,
-                ProductoId = prodBufanda.Id,
-                Cantidad = 1,
-                PrecioUnitario = 12.00m,
-                Activo = true
-            };
-
-            await context.DetallesPedido.AddRangeAsync(detalle1, detalle2);
-            await context.SaveChangesAsync();
+            context.ChangeTracker.AutoDetectChangesEnabled = true;
         }
     }
 }

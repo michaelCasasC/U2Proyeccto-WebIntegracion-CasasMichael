@@ -13,6 +13,9 @@ namespace Proyecto.Models
         [StringLength(1000)]
         public string? Descripcion { get; set; }
 
+        [StringLength(2000)]
+        public string? ImagenUrl { get; set; }
+
         public bool Activo { get; set; } = true;
 
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

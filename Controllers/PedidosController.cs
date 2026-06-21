@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Proyecto.Data;
 using Proyecto.Models;
 using Proyecto.Services;
+using Proyecto.ViewModels;
 
 namespace Proyecto.Controllers
 {
@@ -23,15 +24,72 @@ namespace Proyecto.Controllers
         }
 
         // GET: Pedidos
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1)
         {
-            var appDbContext = _context.Pedidos.Include(p => p.Usuario);
-            return View(await appDbContext.ToListAsync());
+            var accessResult = EnsureLoggedIn();
+            if (accessResult != null)
+                return accessResult;
+
+            const int pageSize = 50;
+
+            var pedidosQuery = _context.Pedidos
+                .AsNoTracking()
+                .Include(p => p.Usuario)
+                .Include(p => p.Detalles)
+                    .ThenInclude(d => d.Producto)
+                .AsQueryable();
+
+            if (_userSession.IsEntrepreneur)
+            {
+                var currentUserId = _userSession.GetCurrentUserId();
+
+                pedidosQuery = pedidosQuery.Where(p =>
+                    p.Detalles.Any(d =>
+                        d.Producto!.Emprendimiento!.UsuarioId == currentUserId));
+            }
+            else if (!_userSession.IsAdmin)
+            {
+                var currentUserId = _userSession.GetCurrentUserId();
+
+                pedidosQuery = pedidosQuery.Where(p =>
+                    p.UsuarioId == currentUserId);
+            }
+
+            var totalRecords = await pedidosQuery.CountAsync();
+
+            var totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+            // 🔒 validación de página
+            if (page < 1)
+                page = 1;
+
+            if (page > totalPages && totalPages > 0)
+                page = totalPages;
+
+            var pedidos = await pedidosQuery
+                .OrderByDescending(p => p.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var vm = new PedidoIndexViewModel
+            {
+                Pedidos = pedidos,
+                CurrentPage = page,
+                TotalRecords = totalRecords,
+                PageSize = pageSize,
+                TotalPages = totalPages
+            };
+
+            return View(vm);
         }
 
         // GET: Pedidos/Details/5
         public async Task<IActionResult> Details(int? id)
         {
+            var accessResult = EnsureLoggedIn();
+            if (accessResult != null) return accessResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -39,8 +97,11 @@ namespace Proyecto.Controllers
 
             var pedido = await _context.Pedidos
                 .Include(p => p.Usuario)
+                .Include(p => p.Detalles)
+                .ThenInclude(d => d.Producto)
+                .ThenInclude(p => p!.Emprendimiento)
                 .FirstOrDefaultAsync(m => m.Id == id);
-            if (pedido == null)
+            if (pedido == null || !CanView(pedido))
             {
                 return NotFound();
             }
@@ -51,50 +112,23 @@ namespace Proyecto.Controllers
         // GET: Pedidos/Create
         public IActionResult Create()
         {
-            if (!_userSession.IsLoggedIn)
-            {
-                return RedirectToAction("Login", "Account", new { returnUrl = Url.Action("Create", "Pedidos") });
-            }
-
-            return View();
+            return RedirectToAction("Index", "Carrito");
         }
 
         // POST: Pedidos/Create
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create([Bind("Id,FechaPedido,Total,Activo,FechaCreacion")] Pedido pedido)
         {
-            if (!_userSession.IsLoggedIn)
-            {
-                return RedirectToAction("Login", "Account", new { returnUrl = Url.Action("Create", "Pedidos") });
-            }
-
-            var currentUserId = _userSession.GetCurrentUserId();
-            if (!currentUserId.HasValue)
-            {
-                return RedirectToAction("Login", "Account", new { returnUrl = Url.Action("Create", "Pedidos") });
-            }
-
-            if (ModelState.IsValid)
-            {
-                pedido.UsuarioId = currentUserId.Value;
-                pedido.FechaPedido = DateTime.UtcNow;
-                pedido.FechaCreacion = DateTime.UtcNow;
-                pedido.Activo = true;
-
-                _context.Add(pedido);
-                await _context.SaveChangesAsync();
-                return RedirectToAction(nameof(Index));
-            }
-
-            return View(pedido);
+            return RedirectToAction("Index", "Carrito");
         }
 
         // GET: Pedidos/Edit/5
         public async Task<IActionResult> Edit(int? id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -110,12 +144,13 @@ namespace Proyecto.Controllers
         }
 
         // POST: Pedidos/Edit/5
-        // To protect from overposting attacks, enable the specific properties you want to bind to.
-        // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int id, [Bind("Id,UsuarioId,FechaPedido,Total,Activo,FechaCreacion")] Pedido pedido)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id != pedido.Id)
             {
                 return NotFound();
@@ -125,7 +160,18 @@ namespace Proyecto.Controllers
             {
                 try
                 {
-                    _context.Update(pedido);
+                    var existing = await _context.Pedidos.FindAsync(id);
+                    if (existing == null)
+                    {
+                        return NotFound();
+                    }
+
+                    existing.UsuarioId = pedido.UsuarioId;
+                    existing.FechaPedido = pedido.FechaPedido;
+                    existing.Total = pedido.Total;
+                    existing.Activo = pedido.Activo;
+                    existing.FechaCreacion = pedido.FechaCreacion;
+
                     await _context.SaveChangesAsync();
                 }
                 catch (DbUpdateConcurrencyException)
@@ -148,6 +194,9 @@ namespace Proyecto.Controllers
         // GET: Pedidos/Delete/5
         public async Task<IActionResult> Delete(int? id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             if (id == null)
             {
                 return NotFound();
@@ -169,10 +218,18 @@ namespace Proyecto.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
+            var adminResult = EnsureAdmin();
+            if (adminResult != null) return adminResult;
+
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido != null)
             {
-                _context.Pedidos.Remove(pedido);
+                pedido.Activo = false;
+                var detalles = await _context.DetallesPedido.Where(d => d.PedidoId == pedido.Id).ToListAsync();
+                foreach (var detalle in detalles)
+                {
+                    detalle.Activo = false;
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -182,6 +239,52 @@ namespace Proyecto.Controllers
         private bool PedidoExists(int id)
         {
             return _context.Pedidos.Any(e => e.Id == id);
+        }
+
+        private IActionResult? EnsureAdmin()
+        {
+            if (!_userSession.IsLoggedIn)
+            {
+                return RedirectToAction(
+                    "Login",
+                    "Account",
+                    new { returnUrl = $"{Request.Path}{Request.QueryString}" });
+            }
+
+            if (!_userSession.IsAdmin)
+            {
+      
+                _userSession.Clear();
+                return RedirectToAction(
+                    "Login",
+                    "Account",
+                    new { returnUrl = $"{Request.Path}{Request.QueryString}" });
+            }
+
+            return null;
+        }
+
+        private IActionResult? EnsureLoggedIn()
+        {
+            if (!_userSession.IsLoggedIn)
+            {
+                return RedirectToAction("Login", "Account", new { returnUrl = $"{Request.Path}{Request.QueryString}" });
+            }
+
+            return null;
+        }
+
+        private bool CanView(Pedido pedido)
+        {
+            if (_userSession.IsAdmin) return true;
+
+            var currentUserId = _userSession.GetCurrentUserId();
+            if (_userSession.IsEntrepreneur)
+            {
+                return pedido.Detalles.Any(d => d.Producto?.Emprendimiento?.UsuarioId == currentUserId);
+            }
+
+            return pedido.UsuarioId == currentUserId;
         }
     }
 }

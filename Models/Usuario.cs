@@ -29,6 +29,9 @@ namespace Proyecto.Models
         [Display(Name = "Emprendedor")]
         public bool EsEmprendedor { get; set; } = false;
 
+        [Display(Name = "Administrador")]
+        public bool EsAdministrador { get; set; } = false;
+
         public bool Activo { get; set; } = true;
 
         public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;

@@ -26,7 +26,16 @@ namespace Proyecto.Services
                 return null;
             }
 
-            var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash ?? string.Empty, password);
+            PasswordVerificationResult result;
+            try
+            {
+                result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash ?? string.Empty, password);
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+
             return result == PasswordVerificationResult.Success ? user : null;
         }
 
